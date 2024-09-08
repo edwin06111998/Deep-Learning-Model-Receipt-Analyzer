@@ -1,0 +1,29 @@
+lr0: 0.001  # Tasa de aprendizaje inicial
+lrf: 0.1  # Factor de reducción de la tasa de aprendizaje
+momentum: 0.937  # Momento del optimizador
+weight_decay: 0.0007  # Decaimiento de los pesos
+warmup_epochs: 3.0  # Épocas de calentamiento
+warmup_momentum: 0.8  # Momento inicial durante el calentamiento
+warmup_bias_lr: 0.1  # Tasa de aprendizaje inicial para los sesgos
+box: 0.05  # Ganancia de la pérdida de la caja
+cls: 0.5  # Ganancia de la pérdida de la clase
+cls_pw: 1.0  # Peso positivo de la pérdida BCELoss de la clase
+obj: 1.0  # Ganancia de la pérdida del objeto (escala con píxeles)
+obj_pw: 1.0  # Peso positivo de la pérdida BCELoss del objeto
+iou_t: 0.20  # Umbral de IoU para el entrenamiento
+anchor_t: 4.0  # Umbral de múltiples anclas
+fl_gamma: 0.0  # Gamma de la pérdida focal (predeterminado de EfficientDet gamma=1.5)
+hsv_h: 0.015  # Aumento de HSV-Hue de la imagen (fracción)
+hsv_s: 0.7  # Aumento de HSV-Saturation de la imagen (fracción)
+hsv_v: 0.4  # Aumento de HSV-Value de la imagen (fracción)
+degrees: 0.5  # Rotación de la imagen (+/- grados)
+translate: 0.1  # Traducción de la imagen (+/- fracción)
+scale: 0.5  # Escala de la imagen (+/- ganancia)
+shear: 0.2  # Cizalladura de la imagen (+/- grados)
+perspective: 0.0  # Perspectiva de la imagen (+/- fracción), rango 0-0.001
+flipud: 0.0  # Volteo de la imagen de arriba a abajo (probabilidad)
+fliplr: 0.5  # Volteo de la imagen de izquierda a derecha (probabilidad)
+mosaic: 1.0  # Mosaico de la imagen (probabilidad)
+mixup: 0.0  # Mezcla de la imagen (probabilidad)
+copy_paste: 0.0  # Copiar y pegar (probabilidad)
+patience: 10  # Número de épocas sin mejora después de las cuales se detendrá el entrenamiento

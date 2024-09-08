@@ -33,9 +33,11 @@ import csv
 import os
 import platform
 import sys
+import json
 from pathlib import Path
-
 import torch
+from google.cloud import vision
+import io
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -44,7 +46,6 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 from ultralytics.utils.plotting import Annotator, colors, save_one_box
-
 from models.common import DetectMultiBackend
 from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams
 from utils.general import (
@@ -65,6 +66,16 @@ from utils.general import (
 )
 from utils.torch_utils import select_device, smart_inference_mode
 
+def detect_text_google_cloud_vision(image_path):
+    client = vision.ImageAnnotatorClient()
+    with io.open(image_path, 'rb') as image_file:
+        content = image_file.read()
+    image = vision.Image(content=content)
+    response = client.text_detection(image=image)
+    texts = response.text_annotations
+    if response.error.message:
+        raise Exception(f'{response.error.message}')
+    return texts[0].description if texts else ""
 
 @smart_inference_mode()
 def run(
@@ -96,6 +107,7 @@ def run(
     half=False,  # use FP16 half-precision inference
     dnn=False,  # use OpenCV DNN for ONNX inference
     vid_stride=1,  # video frame-rate stride
+    save_json=False  # Añadir esta línea
 ):
     """
     Runs YOLOv5 detection inference on various sources like images, videos, directories, streams, etc.
@@ -181,6 +193,10 @@ def run(
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(device=device), Profile(device=device), Profile(device=device))
+
+    # JSON results dictionary
+    json_results = []
+
     for path, im, im0s, vid_cap, s in dataset:
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
@@ -263,12 +279,27 @@ def run(
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
                         with open(f"{txt_path}.txt", "a") as f:
-                            f.write(("%g " * len(line)).rstrip() % line + "\n")
+                            f.write(("%g " * len(line)).rstrip() % line + "\n")                    
+
+                    # Extract text using Google Cloud Vision
+                    x1, y1, x2, y2 = map(int, xyxy)
+                    roi = im0[y1:y2, x1:x2]
+                    roi_path = save_dir / f"temp_{p.stem}.jpg"
+                    cv2.imwrite(str(roi_path), roi)
+                    text = detect_text_google_cloud_vision(str(roi_path))
+                    roi_path.unlink()  # Remove temporary file
+
+                    json_results.append({
+                        'image': p.name,
+                        'label': label,
+                        'confidence': confidence_str,
+                        'text': text.strip()
+                    })
 
                     if save_img or save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
-                        label = None if hide_labels else (names[c] if hide_conf else f"{names[c]} {conf:.2f}")
-                        annotator.box_label(xyxy, label, color=colors(c, True))
+                        #label = None if hide_labels else (names[c] if hide_conf else f"{names[c]} {conf:.2f}")
+                        annotator.box_label(xyxy, None, color=colors(c, True))
                     if save_crop:
                         save_one_box(xyxy, imc, file=save_dir / "crops" / names[c] / f"{p.stem}.jpg", BGR=True)
 
@@ -304,12 +335,18 @@ def run(
         # Print time (inference-only)
         LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
 
+    # Save JSON results
+    if save_json:
+        json_path = save_dir / "results.json"
+        with open(json_path, 'w') as f:
+            json.dump(json_results, f, indent=4)
+
     # Print results
     t = tuple(x.t / seen * 1e3 for x in dt)  # speeds per image
     LOGGER.info(f"Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}" % t)
-    if save_txt or save_img:
-        s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ""
-        LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
+    LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}")
+    if save_json:
+        LOGGER.info(f"JSON results saved to {json_path}")
     if update:
         strip_optimizer(weights[0])  # update model (to fix SourceChangeWarning)
 
@@ -387,6 +424,7 @@ def parse_opt():
     parser.add_argument("--half", action="store_true", help="use FP16 half-precision inference")
     parser.add_argument("--dnn", action="store_true", help="use OpenCV DNN for ONNX inference")
     parser.add_argument("--vid-stride", type=int, default=1, help="video frame-rate stride")
+    parser.add_argument("--save-json", action="store_true", help="save results in JSON format")  # Añadir esta línea
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
